@@ -386,6 +386,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        detectVolumes()
         if (hasStorageAccess()) loadLocal() else status("Storage access needed: tap 'Storage access'.")
         if (session == null && !connecting) {
             val acc = usb.accessoryList?.firstOrNull()
@@ -399,6 +400,26 @@ class MainActivity : Activity() {
         thumbPool.shutdownNow()
         try { unregisterReceiver(permReceiver) } catch (e: Exception) { }
         try { unregisterReceiver(detachReceiver) } catch (e: Exception) { }
+    }
+
+    /** Finds the SD card / USB drives so they can be browsed next to internal storage. */
+    private fun detectVolumes() {
+        val primary = Environment.getExternalStorageDirectory()
+        val extras = ArrayList<File>()
+        try {
+            for (d in getExternalFilesDirs(null)) {
+                if (d == null) continue
+                val p = d.absolutePath
+                val i = p.indexOf("/Android/data/")
+                if (i <= 0) continue
+                val r = File(p.substring(0, i))
+                if (r.absolutePath != primary.absolutePath && extras.none { it.absolutePath == r.absolutePath }) extras.add(r)
+            }
+        } catch (e: Exception) {
+            // keep whatever was found
+        }
+        Session.primaryRoot = primary
+        Session.extraRoots = extras
     }
 
     private fun status(s: String) {
@@ -476,7 +497,11 @@ class MainActivity : Activity() {
         }
         for (e in entries) {
             shown.add(e)
-            labels.add((if (e.dir) "📁 " else "📄 ") + e.name + (if (e.dir) "" else "   " + fmt(e.size)))
+            if (e.name.startsWith("@")) {
+                labels.add("💾 SD / USB storage (" + e.name.substringAfterLast('/') + ")")
+            } else {
+                labels.add((if (e.dir) "📁 " else "📄 ") + e.name + (if (e.dir) "" else "   " + fmt(e.size)))
+            }
         }
         adapter.clear()
         adapter.addAll(labels)
@@ -484,7 +509,10 @@ class MainActivity : Activity() {
     }
 
     private fun folderLabel(fi: FileItem): String {
-        val rel = fi.parent().removePrefix(Environment.getExternalStorageDirectory().absolutePath).trim('/')
+        val p = fi.parent()
+        val prim = Environment.getExternalStorageDirectory().absolutePath
+        if (!p.startsWith(prim)) return "SD/USB: " + p.removePrefix("/storage/")
+        val rel = p.removePrefix(prim).trim('/')
         return if (rel.isEmpty()) "Internal storage" else rel
     }
 
@@ -548,10 +576,11 @@ class MainActivity : Activity() {
 
     private fun goUp() {
         if (showRemote) {
-            val parent = File(remotePath).parent ?: ""
+            val parent = if (remoteRoot.isNotEmpty() && !remotePath.startsWith(remoteRoot)) "" else (File(remotePath).parent ?: "")
             session?.requestList(parent)
         } else {
-            val p = localDir.parentFile
+            val prim = Environment.getExternalStorageDirectory()
+            val p = if (!localDir.absolutePath.startsWith(prim.absolutePath)) prim else localDir.parentFile
             if (p != null) {
                 localDir = p
                 loadLocal()
@@ -560,10 +589,11 @@ class MainActivity : Activity() {
     }
 
     private fun openDir(e: Entry) {
+        val vol = e.name.startsWith("@")
         if (showRemote) {
-            session?.requestList(remotePath + "/" + e.name)
+            session?.requestList(if (vol) e.name.substring(1) else remotePath + "/" + e.name)
         } else {
-            localDir = File(localDir, e.name)
+            localDir = if (vol) File(e.name.substring(1)) else File(localDir, e.name)
             loadLocal()
         }
     }

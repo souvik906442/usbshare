@@ -62,6 +62,10 @@ public class Session {
     public static final int SCAN_RECENT = 1;   // every file, newest first (capped)
     public static final int THUMB_PX = 320;
 
+    /** Internal storage root, and extra volumes (SD card, USB drive). Set by the app before use. */
+    public static volatile File primaryRoot;
+    public static volatile List<File> extraRoots = new ArrayList<>();
+
     static final int CHUNK = 16000;   // 5 + 16000 = 16005 < 16384, and never aligned together with CHUNK sizes
     private static final Charset UTF8 = StandardCharsets.UTF_8;
 
@@ -195,6 +199,11 @@ public class Session {
             return a.getName().compareToIgnoreCase(b.getName());
         });
         ArrayList<Entry> out = new ArrayList<>();
+        File pr = primaryRoot;
+        if (pr != null && sameDir(dir, pr)) {
+            // extra volumes show up as folders named "@/absolute/path" at the top of internal storage
+            for (File x : extraRoots) out.add(new Entry("@" + x.getPath(), true, 0));
+        }
         for (File f : files) {
             boolean d = f.isDirectory();
             out.add(new Entry(f.getName(), d, d ? 0 : f.length()));
@@ -207,6 +216,7 @@ public class Session {
         final int limit = kind == SCAN_MEDIA ? 40000 : 3000;
         PriorityQueue<FileItem> pq = new PriorityQueue<>(1024, (a, b) -> Long.compare(a.mtime, b.mtime));
         walk(root, kind, 0, pq, limit);
+        for (File x : extraRoots) walk(x, kind, 0, pq, limit);
         ArrayList<FileItem> out = new ArrayList<>(pq);
         out.sort((a, b) -> Long.compare(b.mtime, a.mtime));
         return out;
@@ -233,6 +243,14 @@ public class Session {
                 pq.add(new FileItem(f.getPath(), f.lastModified(), f.length(), type));
                 if (pq.size() > limit) pq.poll();
             }
+        }
+    }
+
+    private static boolean sameDir(File a, File b) {
+        try {
+            return a.getCanonicalPath().equals(b.getCanonicalPath());
+        } catch (IOException e) {
+            return a.getAbsolutePath().equals(b.getAbsolutePath());
         }
     }
 
@@ -542,9 +560,22 @@ public class Session {
     private File resolve(String path) throws IOException {
         File f = (path == null || path.isEmpty()) ? root : new File(path);
         String c = f.getCanonicalPath();
-        String r = root.getCanonicalPath();
-        if (!c.equals(r) && !c.startsWith(r + "/")) throw new IOException("outside shared storage: " + path);
+        if (!inside(c, root)) {
+            boolean ok = false;
+            for (File x : extraRoots) {
+                if (inside(c, x)) {
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) throw new IOException("outside shared storage: " + path);
+        }
         return f.getCanonicalFile();
+    }
+
+    private static boolean inside(String canonical, File r) throws IOException {
+        String rc = r.getCanonicalPath();
+        return canonical.equals(rc) || canonical.startsWith(rc + "/");
     }
 
     private void doList(String path) throws IOException {

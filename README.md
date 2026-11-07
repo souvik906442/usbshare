@@ -27,6 +27,8 @@
 - দুটোই **This phone** আর **Other phone** দুই দিকেই কাজ করে (অন্য ফোনের thumbnail-ও USB দিয়ে আসে)।
 - আসা file-এর আসল তারিখ ধরে রাখা হয়, তাই photo ঠিক জায়গায় বসে। দুই ফোনেই নতুন APK লাগবে।
 
+- **SD card / USB drive**: Files ট্যাবে internal storage-এর উপরে `💾 SD / USB storage (...)` folder আসে। Media আর Recent-এও SD card-এর file ধরা হয়।
+
 ## নোট
 - Transfer চলাকালীন app খোলা রাখো (screen চালু থাকে)।
 - Connected অবস্থায় অন্য ফোন আপনার storage ব্রাউজ/নামাতে পারে — শুধু বিশ্বস্ত ফোনে লাগাও।
